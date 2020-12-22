@@ -159,8 +159,13 @@ DOM.Canvas = class extends DOM.Element {
             this.element.style.height = `${height}px`;
             this.context.setTransform(dpr, 0, 0, dpr, 0, 0);
         } else {
-            this.context.clearRect(0, 0, width, height);
+            this.clear();
         }
+    }
+
+    /// Clears the canvas.
+    clear() {
+        this.context.clearRect(0, 0, this.element.width, this.element.height);
     }
 }
 

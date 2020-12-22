@@ -2730,8 +2730,12 @@ class UI {
         // By default, `ArrowStyle` have minimal styling.
         const style = new ArrowStyle();
 
-        // All arrow styles support shifting.
+        // All arrow styles support the following options.
+        // - Shifting.
         style.shift = options.offset * CONSTANTS.EDGE_OFFSET_DISTANCE;
+        // - Colour.
+        const [h, s, l, a] = options.colour;
+        style.colour = `hsla(${h}, ${s}%, ${l}%, ${a})`;
 
         switch (options.style.name) {
             case "arrow":
@@ -3983,6 +3987,119 @@ class Panel {
             tail_styles.class_list.add("next-to-focus");
         });
 
+        // The colour selector.
+
+        const colour_panel = new DOM.Element("div", { class: "colour-panel hidden" }).add_to(this.element);
+
+        new DOM.Element("label").add("Colour: ").add(
+            new DOM.Element("div", { class: "colour-indicator" }, { background: "black" })
+        ).listen("click", () => {
+            colour_panel.class_list.toggle("hidden");
+            if (!colour_panel.class_list.contains("hidden")) {
+                UI.delay(() => {
+                    const rect = canvas.bounding_rect();
+                    update_colour_picker({ clientX: rect.left + size / 2, clientY: rect.top + size / 2 });
+                });
+            }
+        }).add_to(wrapper);
+
+        const size = 192;
+        const tsize = size * window.devicePixelRatio;
+        const canvas = new DOM.Canvas(null, size, size, { class: "colour-wheel" }).add_to(colour_panel);
+        const context = canvas.context;
+
+        const slider = new DOM.Element("input", { type: "range", min: 0, max: 100 })
+            .add_to(new DOM.Element("label").add("Lightness: ").add_to(new DOM.Element("div", { class: "wrapper" }).add_to(colour_panel)));
+
+        const picker = new DOM.Element("div", { class: "colour-picker" }).add_to(colour_panel);
+
+        let lightness = 50;
+
+        slider.listen("pointerdown", event => event.stopPropagation());
+
+        const update_colour_picker = (event) => {
+            const rect = canvas.bounding_rect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            const radius = Math.min(Math.hypot(x - size / 2, y - size / 2), size / 2);
+            const angle = Math.atan2(y - size / 2, x - size / 2) + Math.PI;
+            const [h, s, l, a] = [Math.round(rad_to_deg(angle)), Math.round(2 * radius / size * 100), lightness, 1];
+            const colour = `hsla(${h}, ${s}%, ${l}%, ${a})`;
+            picker.set_style({
+                left: `${canvas.element.offsetLeft - Math.cos(angle) * radius}px`,
+                top: `${canvas.element.offsetTop + size / 2 - Math.sin(angle) * radius}px`,
+                background: colour,
+                "border-color": lightness >= 50 ? "var(--ui-black)" : "var(--ui-white)",
+            });
+            wrapper.query_selector(".colour-indicator").set_style({
+                background: colour,
+            });
+            for (const cell of ui.selection) {
+                // TODO: make sure when we export base64, we can actually compare arrays properly
+                cell.label_colour = [h, s, l, a];
+                const label = cell.element.query_selector(".label");
+                label.set_style({ color: colour });
+                if (cell.is_edge()) {
+                    cell.options.colour = [h, s, l, a];
+                    cell.render(ui);
+                }
+            }
+        };
+
+        let is_colour_picking = false;
+        canvas.listen(pointer_event("down"), (event) => {
+            is_colour_picking = true;
+            event.stopPropagation();
+            update_colour_picker(event);
+        });
+
+        document.addEventListener(pointer_event("move"), (event) => {
+            if (is_colour_picking) {
+                event.stopPropagation();
+                update_colour_picker(event);
+            }
+        });
+
+        document.addEventListener(pointer_event("up"), (event) => {
+            if (is_colour_picking) {
+                event.stopPropagation();
+                is_colour_picking = false;
+            }
+        });
+
+        context.fillStyle = "white";
+        context.fillRect(0, 0, tsize, tsize);
+
+        const images = new Map();
+
+        const update_colour_wheel = () => {
+            if (!images.has(lightness)) {
+                const image = context.createImageData(tsize, tsize);
+                const data = image.data;
+                for (let x = 0; x < tsize; ++x) {
+                    for (let y = 0; y < tsize; ++y) {
+                        const i = x + y * tsize;
+                        const radius = Math.hypot(x - tsize / 2, y - tsize / 2);
+                        const angle = Math.atan2(y - tsize / 2, x - tsize / 2) + Math.PI;
+                        const [r, g, b] = hsl_to_rgb(rad_to_deg(angle), Math.min(1, 2 * radius / tsize), lightness / 100);
+                        [data[4 * i], data[4 * i + 1], data[4 * i + 2], data[4 * i + 3]] = [r, g, b, 255];
+                    }
+                }
+                images.set(lightness, image);
+            }
+
+            context.putImageData(images.get(lightness), 0, 0);
+        };
+
+        update_colour_wheel();
+
+        slider.listen("input", () => {
+            lightness = parseInt(slider.element.value);
+            update_colour_wheel();
+            const rect = canvas.bounding_rect();
+            update_colour_picker({ clientX: size / 2 + picker.element.offsetLeft - canvas.element.offsetLeft + rect.left, clientY: picker.element.offsetTop - canvas.element.offsetTop + rect.top });
+        });
+
         const display_export_pane = (format, modify = (output) => output) => {
             // Handle export button interaction: export the quiver.
             // If the user clicks on two different exports in a row
@@ -5193,6 +5310,9 @@ class Cell {
         // The label with which the vertex or edge is annotated.
         this.label = label;
 
+        // The colour of the label (hue, saturation, lightness, alpha).
+        this.label_colour = [0, 0, 0, 1];
+
         // An ID used to allow the user to jump to this cell via the keyboard.
         this.code = "";
         const chars = "ASDFJKLGHEIRUCM".split("");
@@ -5631,6 +5751,7 @@ class Edge extends Cell {
             curve: 0,
             length: 100,
             level: 1,
+            colour: [0, 0, 0, 1],
             style: {
                 name: "arrow",
                 tail: { name: "none" },

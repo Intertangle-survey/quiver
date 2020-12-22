@@ -355,6 +355,28 @@ QuiverExport.tikz_cd = new class extends QuiverExport {
                     parameters.push(`shift ${side}=${Math.abs(edge.options.offset)}`);
                 }
 
+                const [h, s, l, /* a */] = edge.options.colour;
+                if (l > 0) {
+                    console.log(h, s, l);
+                    const [r, g, b] = hsl_to_rgb(h, s / 100, l / 100).map((x) => Math.round(x));
+                    let colour = `{rgb,255:red,${r};green,${g};blue,${b}}`;
+                    switch (`${r}, ${g}, ${b}`) {
+                        case "255, 255, 255":
+                            colour = "white";
+                            break;
+                        case "255, 0, 0":
+                            colour = "red";
+                            break;
+                        case "0, 255, 0":
+                            colour = "green";
+                            break;
+                        case "0, 0, 255":
+                            colour = "blue";
+                            break;
+                    }
+                    parameters.push(`color=${colour}`);
+                }
+
                 // For curves and shortening, we need to try to convert proportional measurements
                 // into absolute distances (in `pt`) for TikZ. There are several subtleties, one of
                 // which is that the grid cell size in tikz-cd has a greater width than height, so

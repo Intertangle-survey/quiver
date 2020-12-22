@@ -166,3 +166,30 @@ class Path {
         return this;
     }
 }
+
+// `h` ranges from `0` to `360`.
+// `s` ranges from `0` to `1`.
+// `l` ranges from `0` to `1`.
+function hsl_to_rgb(h, s, l) {
+    // Algorithm source: https://en.wikipedia.org/wiki/HSL_and_HSV#HSL_to_RGB_alternative.
+    const a = s * Math.min(l, 1 - l);
+    const f = (n) => {
+        const k = (n + h / 30) % 12;
+        return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+    }
+    return [f(0) * 255, f(8) * 255, f(4) * 255];
+}
+
+function arrays_equal(array1, array2) {
+    if (array1.length !== array2.length) {
+        return false;
+    }
+
+    for (let i = 0; i < array1.length; ++i) {
+        if (array1[i] !== array2[i]) {
+            return false;
+        }
+    }
+
+    return true;
+}
